@@ -1,0 +1,243 @@
+================================================================
+   SISTEMA DE GESTION DE PROYECTOS DE GRADO
+   GUIA COMPLETA DE INSTALACION
+================================================================
+
+PROGRAMAS REQUERIDOS (descargar e instalar en este orden):
+----------------------------------------------------------
+
+1. PYTHON 3.13
+   Descargar: https://www.python.org/downloads/
+   IMPORTANTE: Durante la instalacion marcar la casilla
+               "Add Python to PATH" antes de instalar
+
+2. NODE.JS 18 o superior
+   Descargar: https://nodejs.org/en/download
+   Instalar la version LTS (la recomendada)
+
+3. POSTGRESQL 15 o superior
+   Descargar: https://www.postgresql.org/download/windows/
+   Durante la instalacion configurar:
+     - Usuario:    postgres
+     - Contrasena: root
+     - Puerto:     5432
+   Tambien instala pgAdmin automaticamente (para administrar la BD)
+
+4. GIT
+   Descargar: https://git-scm.com/download/win
+   Instalar con opciones por defecto
+
+5. FLUTTER 3.x (SDK)
+   Descargar: https://docs.flutter.dev/get-started/install/windows
+   Pasos:
+     a) Descomprimir en C:\flutter
+     b) Agregar C:\flutter\bin al PATH del sistema:
+        - Buscar "variables de entorno" en inicio
+        - Variables del sistema > Path > Editar > Nuevo
+        - Escribir: C:\flutter\bin
+        - Aceptar todo
+     c) Abrir terminal y verificar: flutter doctor
+
+6. ANDROID STUDIO
+   Descargar: https://developer.android.com/studio
+   Durante la instalacion instalar tambien:
+     - Android SDK
+     - Android SDK Platform-Tools
+   Despues abrir Android Studio:
+     - SDK Manager > SDK Tools > marcar "Android SDK Command-line Tools"
+
+
+================================================================
+   CONFIGURACION DE LA BASE DE DATOS
+================================================================
+
+1. Abrir pgAdmin (se instala con PostgreSQL)
+2. Conectarse al servidor local con contrasena: root
+3. Click derecho en "Databases" > Create > Database
+4. Nombre de la base de datos: expociencia
+5. Guardar
+
+
+================================================================
+   CONFIGURACION DEL BACKEND (Django)
+================================================================
+
+Abrir una terminal (cmd o PowerShell) en la carpeta del proyecto:
+
+  cd backend
+
+  :: Crear entorno virtual
+  python -m venv venv
+
+  :: Activar entorno virtual
+  venv\Scripts\activate
+
+  :: Instalar dependencias
+  pip install -r requirements.txt
+
+  :: Crear tablas en la base de datos
+  python manage.py migrate
+
+  :: Iniciar el servidor backend
+  python manage.py runserver 0.0.0.0:8000
+
+Si todo va bien veras:
+  Starting development server at http://0.0.0.0:8000/
+
+DEJAR ESTA TERMINAL ABIERTA MIENTRAS SE USA EL SISTEMA.
+
+
+================================================================
+   CONFIGURACION DEL FRONTEND (React)
+================================================================
+
+Abrir OTRA terminal en la carpeta del proyecto:
+
+  cd frontend
+
+  :: Instalar dependencias
+  npm install
+
+  :: Iniciar el servidor frontend
+  npm run dev
+
+Si todo va bien veras:
+  Local: http://localhost:5173
+
+Abrir el navegador en: http://localhost:5173
+
+DEJAR ESTA TERMINAL ABIERTA MIENTRAS SE USA EL SISTEMA.
+
+
+================================================================
+   CONFIGURACION DE LA APP MOVIL (Flutter)
+================================================================
+
+PASO 1 - Conocer la IP de tu computadora:
+  Abrir terminal y escribir: ipconfig
+  Buscar "Direccion IPv4" ejemplo: 192.168.1.100
+
+PASO 2 - Actualizar la IP en el codigo:
+  Abrir el archivo:
+    flutter_tribunal\lib\config\graphql_config.dart
+  Cambiar esta linea:
+    const String kBackendUrl = 'http://192.168.100.50:8000/graphql/';
+  Por la IP de tu computadora:
+    const String kBackendUrl = 'http://TU_IP_AQUI:8000/graphql/';
+
+PASO 3 - Compilar la app:
+  Abrir terminal en la carpeta del proyecto:
+
+  cd flutter_tribunal
+
+  :: Descargar dependencias Flutter
+  flutter pub get
+
+  :: Compilar APK para Android
+  flutter build apk --release
+
+  El APK quedara en:
+  flutter_tribunal\build\app\outputs\flutter-apk\app-release.apk
+
+PASO 4 - Instalar APK en el celular:
+  a) Copiar el archivo app-release.apk al celular
+     (por USB, WhatsApp o Google Drive)
+  b) En el celular ir a Ajustes > Seguridad >
+     Activar "Instalar apps de fuentes desconocidas"
+  c) Abrir el APK desde el celular para instalarlo
+
+
+================================================================
+   ABRIR EL PUERTO 8000 EN EL FIREWALL DE WINDOWS
+================================================================
+
+Sin este paso el celular no puede conectarse al backend.
+
+1. Buscar "Windows Defender Firewall con seguridad avanzada"
+2. Click en "Reglas de entrada" > "Nueva regla"
+3. Tipo: Puerto > Siguiente
+4. TCP > Puerto especifico: 8000 > Siguiente
+5. Permitir la conexion > Siguiente > Siguiente
+6. Nombre: Django 8000 > Finalizar
+
+
+================================================================
+   INICIO RAPIDO (cada vez que uses el sistema)
+================================================================
+
+Opcion A - Doble click en: iniciar_sistema.bat
+           (abre backend y frontend automaticamente)
+
+Opcion B - Manual:
+  Terminal 1:  cd backend  > venv\Scripts\activate > python manage.py runserver 0.0.0.0:8000
+  Terminal 2:  cd frontend > npm run dev
+
+Luego abrir el navegador en: http://localhost:5173
+Y abrir la app en el celular (misma red Wi-Fi que la PC)
+
+
+================================================================
+   VERIFICACION FINAL - CHECKLIST
+================================================================
+
+  [ ] Python instalado   (verificar: python --version)
+  [ ] Node.js instalado  (verificar: node --version)
+  [ ] PostgreSQL corriendo con BD "expociencia" creada
+  [ ] Flutter instalado  (verificar: flutter doctor)
+  [ ] Android Studio instalado con SDK
+  [ ] Backend corriendo en puerto 8000
+  [ ] Frontend corriendo en puerto 5173
+  [ ] IP actualizada en graphql_config.dart
+  [ ] APK compilado e instalado en el celular
+  [ ] Puerto 8000 abierto en Firewall
+  [ ] Celular en la misma red Wi-Fi que la PC
+
+
+================================================================
+   DEPENDENCIAS DEL BACKEND (requirements.txt)
+================================================================
+
+Django==6.0.5
+django-cors-headers==4.9.0
+django-graphql-jwt==0.4.0
+djangorestframework==3.17.1
+graphene==3.4.3
+graphene-django==3.2.3
+psycopg2-binary==2.9.12
+PyJWT==2.12.1
+pyotp==2.9.0
+qrcode==8.2
+firebase-admin==6.5.0
+pillow==12.2.0
+
+
+================================================================
+   DEPENDENCIAS DEL FRONTEND
+================================================================
+
+React 18 + Vite
+Material UI 7
+Apollo Client 3 (GraphQL)
+(instaladas automaticamente con: npm install)
+
+
+================================================================
+   DEPENDENCIAS DE LA APP MOVIL
+================================================================
+
+Flutter SDK >= 3.0.0
+graphql_flutter: ^5.2.0
+flutter_secure_storage: ^9.0.0
+firebase_messaging (notificaciones push)
+(instaladas automaticamente con: flutter pub get)
+
+
+================================================================
+   CONTACTO / SOPORTE
+================================================================
+
+Repositorio: https://github.com/JC800000/tribunal-flutter-v02
+Base de datos: PostgreSQL  nombre: expociencia
+               usuario: postgres  contrasena: root
+
+================================================================
