@@ -1,0 +1,41 @@
+Hola, necesito que me ayudes a configurar y ejecutar un sistema que me pasaron.
+Es un sistema de gestión de proyectos de grado con backend Django, frontend React y app móvil Flutter.
+
+Ya tengo instalado:
+- Python 3.13
+- Node.js
+- PostgreSQL (con usuario "postgres", contraseña "root")
+- Flutter y Android Studio
+- Ya cree la base de datos llamada "expociencia" en pgAdmin
+
+El proyecto ya está descargado en mi computadora.
+La carpeta del proyecto tiene esta estructura:
+  - backend/        (Django + GraphQL)
+  - frontend/       (React + Vite)
+  - flutter_tribunal/ (App móvil Flutter)
+  - iniciar_sistema.bat
+
+Por favor ayúdame paso a paso a:
+
+1. Configurar y levantar el backend Django
+2. Configurar y levantar el frontend React
+3. Saber mi IP local y actualizar el archivo de configuración de Flutter
+4. Compilar la app móvil y generar el APK
+5. Instalar el APK en mi celular Android
+6. Abrir el puerto 8000 en el Firewall de Windows para que el celular se conecte
+7. Verificar que todo funcione correctamente
+
+Cuando termines quiero poder:
+- Abrir el sistema web en el navegador
+- Iniciar sesión en la app del celular con credenciales de tribunal
+
+Empieza por el paso 1. Dime exactamente qué comandos ejecutar y en qué carpeta.
+
+INFORMACION IMPORTANTE DEL PROYECTO:
+- Base de datos: PostgreSQL, nombre: expociencia, usuario: postgres, contraseña: root
+- Backend corre en: http://localhost:8000
+- Frontend corre en: http://localhost:5173
+- Repositorio: https://github.com/JC800000/tribunal-flutter-v02
+- El archivo de configuracion de la IP de Flutter esta en:
+  flutter_tribunal/lib/config/graphql_config.dart
+  (buscar la linea: const String kBackendUrl)
