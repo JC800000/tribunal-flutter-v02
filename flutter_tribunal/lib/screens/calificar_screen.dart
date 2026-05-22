@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../models/evaluacion.dart';
 import '../config/graphql_config.dart';
@@ -542,6 +543,30 @@ class _CalificarScreenState extends State<CalificarScreen> {
   }
 }
 
+class _MaxValueFormatter extends TextInputFormatter {
+  final double max;
+  _MaxValueFormatter(this.max);
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) return newValue;
+    if (newValue.text == '.' || newValue.text.endsWith('.')) return newValue;
+    final val = double.tryParse(newValue.text);
+    if (val == null) return oldValue;
+    if (val > max) {
+      final capped = max % 1 == 0 ? max.toInt().toString() : max.toStringAsFixed(2);
+      return TextEditingValue(
+        text: capped,
+        selection: TextSelection.collapsed(offset: capped.length),
+      );
+    }
+    return newValue;
+  }
+}
+
 class _SeccionWidget extends StatelessWidget {
   final Seccion seccion;
   final Map<String, TextEditingController> controllers;
@@ -706,6 +731,10 @@ class _CriterioField extends StatelessWidget {
                 filled: true,
                 fillColor: Colors.grey[50],
               ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                _MaxValueFormatter(criterio.puntaje),
+              ],
               onChanged: (_) => onChanged(),
             ),
           ),

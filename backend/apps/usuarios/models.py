@@ -222,6 +222,7 @@ class Tribunal(models.Model):
     expedicion = models.CharField(max_length=2, choices=EXPEDICION_CHOICES)
     direccion = models.CharField(max_length=255)
     estado = models.BooleanField(default=True)
+    fcm_token = models.TextField(blank=True, null=True)
 
     class Meta:
         db_table = 'tribunal'

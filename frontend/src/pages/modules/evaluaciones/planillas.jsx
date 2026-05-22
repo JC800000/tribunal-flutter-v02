@@ -96,27 +96,58 @@ function PlanillaDialog({ open, onClose, onSave, saving, initial }) {
   );
 }
 
-function SeccionDialog({ open, onClose, onSave, saving, initial }) {
+function SeccionDialog({ open, onClose, onSave, saving, initial, usedPonderacion }) {
   const editing = !!initial;
-  const [form, setForm] = useState(initial || { nombre: '', ponderacion: '' });
+  const [form, setForm] = useState({ nombre: '', ponderacion: '' });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  // Porcentaje ya usado excluyendo la sección que se edita
+  const ownPct = editing ? parseFloat(initial.ponderacion || 0) : 0;
+  const otherUsed = (usedPonderacion || 0) - ownPct;
+  const disponible = Math.max(0, 100 - otherUsed);
+
+  const pctValue = parseFloat(form.ponderacion) || 0;
+  const excede = pctValue > disponible;
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs"
-      TransitionProps={{ onEnter: () => setForm(initial || { nombre: '', ponderacion: '' }) }}>
+      TransitionProps={{ onEnter: () => setForm(initial ? { nombre: initial.nombre, ponderacion: String(initial.ponderacion) } : { nombre: '', ponderacion: '' }) }}>
       <DialogTitle>{editing ? 'Editar Sección' : 'Nueva Sección'}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ pt: 1 }}>
           <TextField label="Nombre de la sección" value={form.nombre} fullWidth required autoFocus
             onChange={e => set('nombre', e.target.value)} />
+
+          {/* Barra de porcentaje disponible */}
+          <Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography variant="caption" color="text.secondary">Porcentaje disponible</Typography>
+              <Typography variant="caption" fontWeight={700}
+                color={otherUsed >= 100 ? 'error.main' : 'success.main'}>
+                {disponible.toFixed(1)}% restante
+              </Typography>
+            </Box>
+            <Box sx={{ height: 6, borderRadius: 3, bgcolor: 'grey.200', overflow: 'hidden' }}>
+              <Box sx={{
+                height: '100%', borderRadius: 3,
+                width: `${Math.min(100, otherUsed + (excede ? disponible : pctValue))}%`,
+                bgcolor: excede ? 'error.main' : otherUsed + pctValue >= 100 ? 'success.main' : 'primary.main',
+                transition: 'width 0.2s, background-color 0.2s',
+              }} />
+            </Box>
+          </Box>
+
           <TextField label="Ponderación (%)" type="number" value={form.ponderacion} fullWidth required
-            inputProps={{ min: 0, max: 100, step: 0.01 }}
+            inputProps={{ min: 0.01, max: disponible, step: 0.01 }}
+            error={excede}
+            helperText={excede ? `Máximo permitido: ${disponible.toFixed(2)}%` : `Máx. ${disponible.toFixed(2)}%`}
             onChange={e => set('ponderacion', e.target.value)} />
         </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} color="secondary">Cancelar</Button>
-        <Button variant="contained" disabled={!form.nombre.trim() || !form.ponderacion || saving}
+        <Button variant="contained"
+          disabled={!form.nombre.trim() || !form.ponderacion || pctValue <= 0 || excede || saving}
           onClick={() => onSave(form)}>
           {saving ? <CircularProgress size={22} color="inherit" /> : 'Guardar'}
         </Button>
@@ -125,27 +156,57 @@ function SeccionDialog({ open, onClose, onSave, saving, initial }) {
   );
 }
 
-function CriterioDialog({ open, onClose, onSave, saving, initial }) {
+function CriterioDialog({ open, onClose, onSave, saving, initial, seccionMaxPts, usedPuntaje }) {
   const editing = !!initial;
-  const [form, setForm] = useState(initial || { nombre: '', puntaje: '' });
+  const [form, setForm] = useState({ nombre: '', puntaje: '' });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const ownPts   = editing ? parseFloat(initial.puntaje || 0) : 0;
+  const otherUsed = (usedPuntaje || 0) - ownPts;
+  const disponible = Math.max(0, (seccionMaxPts || 0) - otherUsed);
+
+  const ptsValue = parseFloat(form.puntaje) || 0;
+  const excede   = ptsValue > disponible;
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs"
-      TransitionProps={{ onEnter: () => setForm(initial || { nombre: '', puntaje: '' }) }}>
+      TransitionProps={{ onEnter: () => setForm(initial ? { nombre: initial.nombre, puntaje: String(initial.puntaje) } : { nombre: '', puntaje: '' }) }}>
       <DialogTitle>{editing ? 'Editar Criterio' : 'Nuevo Criterio'}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ pt: 1 }}>
           <TextField label="Nombre del criterio" value={form.nombre} fullWidth required autoFocus
             onChange={e => set('nombre', e.target.value)} />
-          <TextField label="Puntaje máximo" type="number" value={form.puntaje} fullWidth required
-            inputProps={{ min: 0, max: 1000, step: 0.01 }}
+
+          {/* Barra de puntos disponibles */}
+          <Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography variant="caption" color="text.secondary">Puntaje disponible en la sección</Typography>
+              <Typography variant="caption" fontWeight={700}
+                color={otherUsed >= (seccionMaxPts || 0) ? 'error.main' : 'success.main'}>
+                {disponible.toFixed(2)} pts restantes
+              </Typography>
+            </Box>
+            <Box sx={{ height: 6, borderRadius: 3, bgcolor: 'grey.200', overflow: 'hidden' }}>
+              <Box sx={{
+                height: '100%', borderRadius: 3,
+                width: `${seccionMaxPts ? Math.min(100, ((otherUsed + (excede ? disponible : ptsValue)) / seccionMaxPts) * 100) : 0}%`,
+                bgcolor: excede ? 'error.main' : otherUsed + ptsValue >= (seccionMaxPts || 0) ? 'success.main' : 'primary.main',
+                transition: 'width 0.2s, background-color 0.2s',
+              }} />
+            </Box>
+          </Box>
+
+          <TextField label="Puntaje" type="number" value={form.puntaje} fullWidth required
+            inputProps={{ min: 0.01, max: disponible, step: 0.01 }}
+            error={excede}
+            helperText={excede ? `Máximo permitido: ${disponible.toFixed(2)} pts` : `Máx. ${disponible.toFixed(2)} pts`}
             onChange={e => set('puntaje', e.target.value)} />
         </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} color="secondary">Cancelar</Button>
-        <Button variant="contained" disabled={!form.nombre.trim() || !form.puntaje || saving}
+        <Button variant="contained"
+          disabled={!form.nombre.trim() || !form.puntaje || ptsValue <= 0 || excede || saving}
           onClick={() => onSave(form)}>
           {saving ? <CircularProgress size={22} color="inherit" /> : 'Guardar'}
         </Button>
@@ -163,7 +224,7 @@ function StatusIcon({ type }) {
 }
 
 // ── Confirm dialog ────────────────────────────────────────────────────────────
-function ConfirmDialog({ open, title, message, onConfirm, onClose, loading, type = 'error' }) {
+function ConfirmDialog({ open, title, message, onConfirm, onClose, loading, type = 'error', confirmLabel }) {
   const { mode } = useColorScheme();
   const dark = mode === 'dark';
   const isError = type === 'error';
@@ -243,7 +304,7 @@ function ConfirmDialog({ open, title, message, onConfirm, onClose, loading, type
                 : '0 6px 24px rgba(82,196,26,0.6)',
             },
           }}>
-          {loading ? <CircularProgress size={20} color="inherit" /> : (isError ? 'Desactivar' : 'Restaurar')}
+          {loading ? <CircularProgress size={20} color="inherit" /> : (confirmLabel || (isError ? 'Desactivar' : 'Restaurar'))}
         </Button>
       </Box>
     </Dialog>
@@ -291,11 +352,11 @@ export default function PlanillasRubricasPage() {
   const showNotif = (msg, sev = 'success') => setNotif({ open: true, msg, sev });
 
   // Confirm dialog state
-  const [confirmDlg, setConfirmDlg] = useState({ open: false, title: '', message: '', onConfirm: null, type: 'error' });
+  const [confirmDlg, setConfirmDlg] = useState({ open: false, title: '', message: '', onConfirm: null, type: 'error', confirmLabel: undefined });
   const [confirming, setConfirming] = useState(false);
-  const showConfirm = (title, message, onConfirm, type = 'error') =>
-    setConfirmDlg({ open: true, title, message, onConfirm, type });
-  const closeConfirm = () => setConfirmDlg({ open: false, title: '', message: '', onConfirm: null, type: 'error' });
+  const showConfirm = (title, message, onConfirm, type = 'error', confirmLabel = undefined) =>
+    setConfirmDlg({ open: true, title, message, onConfirm, type, confirmLabel });
+  const closeConfirm = () => setConfirmDlg({ open: false, title: '', message: '', onConfirm: null, type: 'error', confirmLabel: undefined });
 
   const handleConfirm = async () => {
     if (!confirmDlg.onConfirm) return;
@@ -307,8 +368,8 @@ export default function PlanillasRubricasPage() {
 
   // Dialog states
   const [planillaDialog, setPlanillaDialog] = useState({ open: false, initial: null });
-  const [seccionDialog, setSeccionDialog]   = useState({ open: false, initial: null, planillaId: null });
-  const [criterioDialog, setCriterioDialog] = useState({ open: false, initial: null, seccionId: null });
+  const [seccionDialog, setSeccionDialog]   = useState({ open: false, initial: null, planillaId: null, usedPonderacion: 0 });
+  const [criterioDialog, setCriterioDialog] = useState({ open: false, initial: null, seccionId: null, seccionMaxPts: 0, usedPuntaje: 0 });
 
   const planillas = data?.todasLasPlanillas || [];
 
@@ -331,6 +392,22 @@ export default function PlanillasRubricasPage() {
       else showNotif(res?.error || 'Error al guardar', 'error');
     } catch { showNotif('Error de conexión', 'error'); }
     setSaving(false);
+  };
+
+  const handleDeletePlanilla = (planilla) => {
+    showConfirm(
+      'Eliminar planilla',
+      `Se eliminará permanentemente la planilla "${planilla.nombre}" junto con todas sus secciones y criterios. Esta acción no se puede deshacer.`,
+      async () => {
+        try {
+          const res = (await eliminarPlanilla({ variables: { idPlanillaEvaluativa: planilla.idPlanillaEvaluativa } })).data?.eliminarPlanillaEvaluativa;
+          if (res?.ok) { showNotif('Planilla eliminada'); refetch(); }
+          else showNotif(res?.error || 'Error al eliminar', 'error');
+        } catch { showNotif('Error de conexión', 'error'); }
+      },
+      'error',
+      'Eliminar'
+    );
   };
 
   const handleTogglePlanilla = (planilla) => {
@@ -456,14 +533,20 @@ export default function PlanillasRubricasPage() {
                     <Typography variant="subtitle1" fontWeight={600}>{planilla.nombre}</Typography>
                     <Typography variant="caption" color="text.secondary">
                       Nota máxima: {planilla.notaMaxima} pts &nbsp;·&nbsp; {(planilla.secciones || []).length} sección(es)
-                      &nbsp;·&nbsp; Ponderación total: {totalPonderacion.toFixed(1)}%
+                      &nbsp;·&nbsp; Ponderación total:&nbsp;
+                      <Box component="span" sx={{
+                        fontWeight: 700,
+                        color: totalPonderacion > 100 ? 'error.main' : totalPonderacion === 100 ? 'success.main' : 'warning.main'
+                      }}>
+                        {totalPonderacion.toFixed(1)}% / 100%
+                      </Box>
                     </Typography>
                   </Box>
                   <Chip label={planilla.estado ? 'Activa' : 'Inactiva'}
                     color={planilla.estado ? 'success' : 'default'} size="small" />
                   <Tooltip title="Agregar sección">
                     <Button size="small" startIcon={<PlusOutlined />} variant="outlined"
-                      onClick={() => setSeccionDialog({ open: true, initial: null, planillaId: planilla.idPlanillaEvaluativa })}>
+                      onClick={() => setSeccionDialog({ open: true, initial: null, planillaId: planilla.idPlanillaEvaluativa, usedPonderacion: totalPonderacion })}>
                       Sección
                     </Button>
                   </Tooltip>
@@ -488,6 +571,12 @@ export default function PlanillasRubricasPage() {
                       </IconButton>
                     </Tooltip>
                   )}
+                  <Tooltip title="Eliminar planilla permanentemente">
+                    <IconButton size="small" color="error"
+                      onClick={() => handleDeletePlanilla(planilla)}>
+                      <DeleteOutlined />
+                    </IconButton>
+                  </Tooltip>
                 </Box>
 
                 {/* Secciones (accordion) */}
@@ -507,12 +596,17 @@ export default function PlanillasRubricasPage() {
                         <Chip label={`${(seccion.criterios || []).length} criterios`} size="small" variant="outlined" sx={{ mr: 1 }} />
                         <Tooltip title="Agregar criterio">
                           <Button component="div" size="small" startIcon={<PlusOutlined />}
-                            onClick={e => { e.stopPropagation(); setCriterioDialog({ open: true, initial: null, seccionId: seccion.idSeccion }); }}>
+                            onClick={e => {
+                              e.stopPropagation();
+                              const maxPts = parseFloat(planilla.notaMaxima) * parseFloat(seccion.ponderacion) / 100;
+                              const used   = (seccion.criterios || []).reduce((s, c) => s + parseFloat(c.puntaje || 0), 0);
+                              setCriterioDialog({ open: true, initial: null, seccionId: seccion.idSeccion, seccionMaxPts: maxPts, usedPuntaje: used });
+                            }}>
                             Criterio
                           </Button>
                         </Tooltip>
                         <IconButton component="div" size="small" color="primary"
-                          onClick={e => { e.stopPropagation(); setSeccionDialog({ open: true, initial: seccion, planillaId: planilla.idPlanillaEvaluativa }); }}>
+                          onClick={e => { e.stopPropagation(); setSeccionDialog({ open: true, initial: seccion, planillaId: planilla.idPlanillaEvaluativa, usedPonderacion: totalPonderacion }); }}>
                           <EditOutlined style={{ fontSize: 13 }} />
                         </IconButton>
                         <IconButton component="div" size="small" color="error"
@@ -527,16 +621,27 @@ export default function PlanillasRubricasPage() {
                           <Stack spacing={0.5}>
                             {seccion.criterios.map(criterio => (
                               <CriterioRow key={criterio.idCriterio} criterio={criterio}
-                                onEdit={c => setCriterioDialog({ open: true, initial: c, seccionId: seccion.idSeccion })}
+                                onEdit={c => {
+                                const maxPts = parseFloat(planilla.notaMaxima) * parseFloat(seccion.ponderacion) / 100;
+                                const used   = (seccion.criterios || []).reduce((s, cr) => s + parseFloat(cr.puntaje || 0), 0);
+                                setCriterioDialog({ open: true, initial: c, seccionId: seccion.idSeccion, seccionMaxPts: maxPts, usedPuntaje: used });
+                              }}
                                 onDelete={handleDeleteCriterio} />
                             ))}
                           </Stack>
                         )}
                         <Divider sx={{ mt: 1.5, mb: 0.5 }} />
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Subtotal sección: {(seccion.criterios || []).reduce((s, c) => s + parseFloat(c.puntaje || 0), 0).toFixed(1)} pts
-                          </Typography>
+                          {(() => {
+                            const used   = (seccion.criterios || []).reduce((s, c) => s + parseFloat(c.puntaje || 0), 0);
+                            const maxPts = parseFloat(planilla.notaMaxima) * parseFloat(seccion.ponderacion) / 100;
+                            const color  = used > maxPts ? 'error.main' : used === maxPts ? 'success.main' : 'text.secondary';
+                            return (
+                              <Typography variant="caption" sx={{ color }}>
+                                Subtotal: {used.toFixed(1)} / {maxPts.toFixed(1)} pts
+                              </Typography>
+                            );
+                          })()}
                         </Box>
                       </AccordionDetails>
                     </Accordion>
@@ -558,17 +663,20 @@ export default function PlanillasRubricasPage() {
       />
       <SeccionDialog
         open={seccionDialog.open}
-        onClose={() => setSeccionDialog({ open: false, initial: null, planillaId: null })}
+        onClose={() => setSeccionDialog({ open: false, initial: null, planillaId: null, usedPonderacion: 0 })}
         onSave={handleSaveSeccion}
         saving={saving}
         initial={seccionDialog.initial}
+        usedPonderacion={seccionDialog.usedPonderacion}
       />
       <CriterioDialog
         open={criterioDialog.open}
-        onClose={() => setCriterioDialog({ open: false, initial: null, seccionId: null })}
+        onClose={() => setCriterioDialog({ open: false, initial: null, seccionId: null, seccionMaxPts: 0, usedPuntaje: 0 })}
         onSave={handleSaveCriterio}
         saving={saving}
         initial={criterioDialog.initial}
+        seccionMaxPts={criterioDialog.seccionMaxPts}
+        usedPuntaje={criterioDialog.usedPuntaje}
       />
 
       <ConfirmDialog
@@ -579,6 +687,7 @@ export default function PlanillasRubricasPage() {
         onClose={closeConfirm}
         loading={confirming}
         type={confirmDlg.type}
+        confirmLabel={confirmDlg.confirmLabel}
       />
 
       <Snackbar open={notif.open} autoHideDuration={4000}

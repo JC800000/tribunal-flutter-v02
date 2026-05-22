@@ -1,11 +1,12 @@
 import graphene
 from graphene_django import DjangoObjectType
 from apps.evaluaciones.models import (
-    PlanillaEvaluativa, Seccion, Criterio, ActaEvaluacion, 
+    PlanillaEvaluativa, Seccion, Criterio, ActaEvaluacion,
     DetalleEvaluacion, PuntuacionCriterio
 )
 from apps.proyectos.models import Proyecto
 from apps.usuarios.models import Tribunal
+from config.fcm import send_push
 
 class PlanillaEvaluativaType(DjangoObjectType):
     class Meta:
@@ -210,11 +211,24 @@ class EliminarPlanillaEvaluativa(graphene.Mutation):
     def mutate(root, info, id_planilla_evaluativa):
         try:
             planilla = PlanillaEvaluativa.objects.get(pk=id_planilla_evaluativa)
-            planilla.estado = False
-            planilla.save()
-            return EliminarPlanillaEvaluativa(ok=True, error=None) # type: ignore
         except PlanillaEvaluativa.DoesNotExist:
             return EliminarPlanillaEvaluativa(ok=False, error="La planilla no existe.") # type: ignore
+
+        try:
+            from django.db import transaction
+            with transaction.atomic():
+                # 1. Eliminar actas (cascadea a DetalleEvaluacion y PuntuacionCriterio)
+                ActaEvaluacion.objects.filter(planilla_evaluativa=planilla).delete()
+                # 2. Eliminar criterios de cada sección (ya sin puntuaciones)
+                for seccion in Seccion.objects.filter(planilla_evaluativa=planilla):
+                    Criterio.objects.filter(seccion=seccion).delete()
+                # 3. Eliminar secciones
+                Seccion.objects.filter(planilla_evaluativa=planilla).delete()
+                # 4. Eliminar la planilla
+                planilla.delete()
+            return EliminarPlanillaEvaluativa(ok=True, error=None) # type: ignore
+        except Exception as e:
+            return EliminarPlanillaEvaluativa(ok=False, error=f"Error al eliminar: {str(e)}") # type: ignore
 
 
 # ================= MUTACIONES Seccion =================
@@ -234,6 +248,14 @@ class CrearSeccion(graphene.Mutation):
             planilla = PlanillaEvaluativa.objects.get(pk=id_planilla_evaluativa)
         except PlanillaEvaluativa.DoesNotExist:
             return CrearSeccion(seccion=None, ok=False, error="La planilla no existe.") # type: ignore
+
+        from decimal import Decimal
+        usado = Seccion.objects.filter(planilla_evaluativa=planilla).aggregate(
+            total=__import__('django.db.models', fromlist=['Sum']).Sum('ponderacion')
+        )['total'] or Decimal('0')
+        if usado + Decimal(str(ponderacion)) > Decimal('100'):
+            disponible = Decimal('100') - usado
+            return CrearSeccion(seccion=None, ok=False, error=f"Supera el 100%. Porcentaje disponible: {disponible:.2f}%") # type: ignore
 
         seccion = Seccion.objects.create(planilla_evaluativa=planilla, nombre=nombre, ponderacion=ponderacion)
         return CrearSeccion(seccion=seccion, ok=True, error=None) # type: ignore
@@ -262,6 +284,18 @@ class EditarSeccion(graphene.Mutation):
                 seccion.planilla_evaluativa = PlanillaEvaluativa.objects.get(pk=kwargs['id_planilla_evaluativa'])
             except PlanillaEvaluativa.DoesNotExist:
                 return EditarSeccion(seccion=None, ok=False, error="La planilla no existe.") # type: ignore
+
+        if 'ponderacion' in kwargs and kwargs['ponderacion'] is not None:
+            from decimal import Decimal
+            nueva = Decimal(str(kwargs['ponderacion']))
+            usado = Seccion.objects.filter(
+                planilla_evaluativa=seccion.planilla_evaluativa
+            ).exclude(pk=seccion.pk).aggregate(
+                total=__import__('django.db.models', fromlist=['Sum']).Sum('ponderacion')
+            )['total'] or Decimal('0')
+            if usado + nueva > Decimal('100'):
+                disponible = Decimal('100') - usado
+                return EditarSeccion(seccion=None, ok=False, error=f"Supera el 100%. Porcentaje disponible: {disponible:.2f}%") # type: ignore
 
         for field in ['nombre', 'ponderacion', 'estado']:
             if field in kwargs and kwargs[field] is not None:
@@ -327,6 +361,14 @@ class CrearCriterio(graphene.Mutation):
         except Seccion.DoesNotExist:
             return CrearCriterio(criterio=None, ok=False, error="La sección no existe.") # type: ignore
 
+        from decimal import Decimal
+        from django.db.models import Sum
+        seccion_max = seccion.planilla_evaluativa.nota_maxima * seccion.ponderacion / Decimal('100')
+        usado = Criterio.objects.filter(seccion=seccion).aggregate(total=Sum('puntaje'))['total'] or Decimal('0')
+        if usado + Decimal(str(puntaje)) > seccion_max:
+            disponible = seccion_max - usado
+            return CrearCriterio(criterio=None, ok=False, error=f"Supera el límite de la sección ({seccion_max:.2f} pts). Disponible: {disponible:.2f} pts") # type: ignore
+
         criterio = Criterio.objects.create(seccion=seccion, nombre=nombre, puntaje=puntaje)
         return CrearCriterio(criterio=criterio, ok=True, error=None) # type: ignore
 
@@ -354,6 +396,17 @@ class EditarCriterio(graphene.Mutation):
                 criterio.seccion = Seccion.objects.get(pk=kwargs['id_seccion'])
             except Seccion.DoesNotExist:
                 return EditarCriterio(criterio=None, ok=False, error="La sección no existe.") # type: ignore
+
+        if 'puntaje' in kwargs and kwargs['puntaje'] is not None:
+            from decimal import Decimal
+            from django.db.models import Sum
+            nuevo = Decimal(str(kwargs['puntaje']))
+            seccion = criterio.seccion
+            seccion_max = seccion.planilla_evaluativa.nota_maxima * seccion.ponderacion / Decimal('100')
+            usado = Criterio.objects.filter(seccion=seccion).exclude(pk=criterio.pk).aggregate(total=Sum('puntaje'))['total'] or Decimal('0')
+            if usado + nuevo > seccion_max:
+                disponible = seccion_max - usado
+                return EditarCriterio(criterio=None, ok=False, error=f"Supera el límite de la sección ({seccion_max:.2f} pts). Disponible: {disponible:.2f} pts") # type: ignore
 
         for field in ['nombre', 'puntaje', 'estado']:
             if field in kwargs and kwargs[field] is not None:
@@ -428,6 +481,9 @@ class CrearActaEvaluacion(graphene.Mutation):
             proyecto = Proyecto.objects.get(pk=id_proyecto)
         except Proyecto.DoesNotExist:
             return CrearActaEvaluacion(acta=None, ok=False, error="El proyecto no existe.") # type: ignore
+
+        if proyecto.estado.lower() != 'aprobado':
+            return CrearActaEvaluacion(acta=None, ok=False, error="El proyecto debe estar aprobado para crear un acta de evaluación.") # type: ignore
 
         if ActaEvaluacion.objects.filter(proyecto=proyecto, planilla_evaluativa=planilla).exists():
             return CrearActaEvaluacion(acta=None, ok=False, error="El proyecto ya fue evaluado con esta planilla.") # type: ignore
@@ -543,6 +599,17 @@ class CrearDetalleEvaluacion(graphene.Mutation):
             tribunal=tribunal,
             puntuacion=puntuacion
         )
+
+        if tribunal.fcm_token:
+            send_push(
+                token=tribunal.fcm_token,
+                title='Nuevo proyecto asignado',
+                body=(
+                    f'Fuiste asignado al proyecto "{acta.proyecto.titulo}". '
+                    'Por favor envía tus notas antes de la fecha indicada.'
+                ),
+            )
+
         return CrearDetalleEvaluacion(detalle_evaluacion=detalle, ok=True, error=None) # type: ignore
 
 class EditarDetalleEvaluacion(graphene.Mutation):

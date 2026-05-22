@@ -2,10 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-// ─── Cambia esta URL por la IP/dominio del servidor en producción ───
-const String kBackendUrl = 'http://192.168.100.61:8000/graphql/';
-// 10.0.2.2 es el localhost del host en el emulador Android.
-// Para dispositivo físico en red local usa la IP de la máquina, ej: http://192.168.1.X:8000/graphql/
+// ─── Configuración de URL del Backend ───
+// IP ESTÁTICA de la PC servidor — cambiar solo si se cambia la IP del servidor
+const String kBackendUrl = 'http://192.168.100.50:8000/graphql/';
 
 class GraphQLConfig {
   static final FlutterSecureStorage _storage = const FlutterSecureStorage();
@@ -44,5 +43,6 @@ class GraphQLConfig {
         cache: GraphQLCache(store: InMemoryStore()),
       ),
     );
+    
   }
 }

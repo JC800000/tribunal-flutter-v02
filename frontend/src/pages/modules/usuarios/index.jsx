@@ -562,7 +562,6 @@ export default function UsuariosPage() {
         </>
       )}
 
-      {/* Dialog para Crear/Editar Premium */}
       <Dialog 
         open={openDialog} 
         onClose={handleCloseDialog} 
@@ -570,21 +569,23 @@ export default function UsuariosPage() {
         maxWidth="sm"
         PaperProps={{
           sx: {
-            borderRadius: 4,
-            boxShadow: '0 24px 48px rgba(0,0,0,0.1)'
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.05), 0 10px 10px -5px rgba(0,0,0,0.02)'
           }
         }}
       >
-        <DialogTitle sx={{ p: 3, pb: 2 }}>
-          <Typography variant="h4" sx={{ fontWeight: 800 }}>
+        <DialogTitle sx={{ p: 3, pb: 2, borderBottom: '1px solid', borderColor: 'grey.100' }}>
+          <Typography variant="h4" sx={{ fontWeight: 600, color: 'text.primary' }}>
             {editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             {editingUser ? 'Actualiza los datos del usuario seleccionado.' : 'Completa los datos para crear un nuevo acceso.'}
           </Typography>
         </DialogTitle>
-        <DialogContent dividers sx={{ p: 3, borderTop: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 1 }}>
+        <DialogContent sx={{ p: 3, pt: 4, pb: 4 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <TextField 
               label="Nombre de Usuario" 
               name="username" 
@@ -592,7 +593,15 @@ export default function UsuariosPage() {
               onChange={handleChange} 
               fullWidth 
               required 
-              InputProps={{ sx: { borderRadius: 2 } }}
+              InputProps={{ 
+                sx: { 
+                  borderRadius: '8px', 
+                  bgcolor: '#F8FAFC', 
+                  transition: 'all 0.15s ease',
+                  '&:hover': { bgcolor: '#F1F5F9' },
+                  '&.Mui-focused': { bgcolor: '#FFF' }
+                } 
+              }}
             />
             <TextField 
               label="Correo Electrónico" 
@@ -602,7 +611,15 @@ export default function UsuariosPage() {
               onChange={handleChange} 
               fullWidth 
               required 
-              InputProps={{ sx: { borderRadius: 2 } }}
+              InputProps={{ 
+                sx: { 
+                  borderRadius: '8px', 
+                  bgcolor: '#F8FAFC', 
+                  transition: 'all 0.15s ease',
+                  '&:hover': { bgcolor: '#F1F5F9' },
+                  '&.Mui-focused': { bgcolor: '#FFF' }
+                } 
+              }}
             />
             <TextField
               label={editingUser ? 'Contraseña (dejar en blanco para no cambiar)' : 'Contraseña'}
@@ -612,42 +629,67 @@ export default function UsuariosPage() {
               onChange={handleChange}
               fullWidth
               required={!editingUser}
-              InputProps={{ sx: { borderRadius: 2 } }}
+              InputProps={{ 
+                sx: { 
+                  borderRadius: '8px', 
+                  bgcolor: '#F8FAFC', 
+                  transition: 'all 0.15s ease',
+                  '&:hover': { bgcolor: '#F1F5F9' },
+                  '&.Mui-focused': { bgcolor: '#FFF' }
+                } 
+              }}
             />
             {editingUser && (
               <Box sx={{ 
                 p: 2, 
-                borderRadius: 2, 
-                bgcolor: formData.estado ? 'success.lighter' : 'error.lighter',
+                borderRadius: '8px', 
                 border: '1px solid',
-                borderColor: formData.estado ? 'success.light' : 'error.light',
+                borderColor: 'divider',
+                bgcolor: 'transparent',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between'
+                justifyContent: 'space-between',
+                transition: 'all 0.2s'
               }}>
                 <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: formData.estado ? 'success.dark' : 'error.dark' }}>
-                    Estado de la Cuenta
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: formData.estado ? 'success.main' : 'error.main' }}>
-                    {formData.estado ? 'El usuario puede acceder al sistema' : 'El usuario tiene el acceso suspendido'}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <Box sx={{ 
+                      width: '8px', 
+                      height: '8px', 
+                      borderRadius: '50%', 
+                      bgcolor: formData.estado ? 'success.main' : 'error.main' 
+                    }} />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                      Estado de la Cuenta
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    {formData.estado ? 'El usuario tiene acceso activo al sistema' : 'El acceso de este usuario está suspendido'}
                   </Typography>
                 </Box>
                 <Switch 
                   checked={formData.estado} 
                   onChange={handleChange} 
                   name="estado" 
-                  color={formData.estado ? 'success' : 'error'}
+                  color="primary"
                 />
               </Box>
             )}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
+        <DialogActions sx={{ p: 3, pt: 2, borderTop: '1px solid', borderColor: 'grey.100' }}>
           <Button 
             onClick={handleCloseDialog} 
             color="inherit"
-            sx={{ fontWeight: 600, borderRadius: 2, px: 3, py: 1 }}
+            sx={{ 
+              fontWeight: 500, 
+              borderRadius: '6px', 
+              px: 3, 
+              py: 0.8,
+              textTransform: 'none',
+              color: 'text.secondary',
+              '&:hover': { bgcolor: '#F1F5F9' }
+            }}
           >
             Cancelar
           </Button>
@@ -656,11 +698,22 @@ export default function UsuariosPage() {
             variant="contained"
             disabled={!formData.username || !formData.email || (!editingUser && !formData.password) || saving}
             sx={{ 
-              fontWeight: 600, 
-              borderRadius: 2, 
+              fontWeight: 500, 
+              borderRadius: '6px', 
               px: 4, 
-              py: 1,
-              boxShadow: '0 4px 12px rgba(24, 144, 255, 0.2)'
+              py: 0.8,
+              textTransform: 'none',
+              bgcolor: '#0F172A',
+              color: '#FFF',
+              boxShadow: 'none',
+              '&:hover': {
+                bgcolor: '#1E293B',
+                boxShadow: 'none'
+              },
+              '&.Mui-disabled': {
+                bgcolor: 'action.disabledBackground',
+                color: 'action.disabled'
+              }
             }}
           >
             {saving ? <CircularProgress size={24} color="inherit" /> : (editingUser ? 'Guardar Cambios' : 'Crear Usuario')}

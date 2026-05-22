@@ -23,9 +23,11 @@ import {
   Switch,
   IconButton,
   Chip,
+  Alert,
+  Snackbar,
   useTheme
 } from '@mui/material';
-import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, UserOutlined } from '@ant-design/icons';
 import MainCard from 'components/MainCard';
 import { useMutation, useQuery, gql } from '@apollo/client';
 import Swal from 'sweetalert2';
@@ -294,6 +296,41 @@ const CARGO_CHOICES = [
   { value: 'VICERECTOR', label: 'Vicerector' },
 ];
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2.5, mt: 3.5, '&:first-of-type': { mt: 1.5 } }}>
+      <Typography sx={{
+        fontSize: '0.72rem', fontWeight: 600, color: '#475569',
+        textTransform: 'uppercase', letterSpacing: 0.8, whiteSpace: 'nowrap',
+        display: 'flex', alignItems: 'center', gap: 1,
+        '&::before': {
+          content: '""',
+          display: 'inline-block',
+          width: '3px',
+          height: '11px',
+          bgcolor: '#0F172A',
+          borderRadius: '2px'
+        }
+      }}>
+        {children}
+      </Typography>
+      <Box sx={{ flex: 1, height: '1px', bgcolor: '#F1F5F9' }} />
+    </Box>
+  );
+}
+
+function detectField(msg: string): string {
+  const m = msg.toLowerCase();
+  if (m.includes('username') || m.includes('nombre de usuario') || m.includes('este nombre')) return 'username';
+  if (m.includes('email') || m.includes('correo')) return 'email';
+  if (m.includes('password') || m.includes('contraseña')) return 'password';
+  if (m.includes(' ci') || m.includes('cédula') || m.includes('cedula') || m.includes('identificaci')) return 'ci';
+  if (m.includes('empleado') || m.includes('cod_empleado')) return 'cod_empleado';
+  if (m.includes('especialidad')) return 'especialidad';
+  if (m.includes('celular') || m.includes('teléfono') || m.includes('telefono')) return 'celular';
+  return '';
+}
+
 const PerfilesPage: React.FC = () => {
   const theme = useTheme();
   const [tabValue, setTabValue] = useState(0);
@@ -314,6 +351,26 @@ const PerfilesPage: React.FC = () => {
 
   // External Participant toggle
   const [isExterno, setIsExterno] = useState(false);
+
+  // Inline form errors + field highlight
+  const [errorParticipante, setErrorParticipante] = useState('');
+  const [errorTutor, setErrorTutor]               = useState('');
+  const [errorTribunal, setErrorTribunal]         = useState('');
+  const [errorPersonal, setErrorPersonal]         = useState('');
+
+  const [errorFieldParticipante, setErrorFieldParticipante] = useState('');
+  const [errorFieldTutor, setErrorFieldTutor]               = useState('');
+  const [errorFieldTribunal, setErrorFieldTribunal]         = useState('');
+  const [errorFieldPersonal, setErrorFieldPersonal]         = useState('');
+
+  // Floating snackbar for errors
+  const [snackErr, setSnackErr] = useState({ open: false, msg: '' });
+
+  // Usuario ya creado pero perfil falló — reutilizar en siguiente intento
+  const [pendingUserParticipante, setPendingUserParticipante] = useState<string | null>(null);
+  const [pendingUserTutor, setPendingUserTutor]               = useState<string | null>(null);
+  const [pendingUserTribunal, setPendingUserTribunal]         = useState<string | null>(null);
+  const [pendingUserPersonal, setPendingUserPersonal]         = useState<string | null>(null);
 
   // Queries
   const { data: dataParticipantes, refetch: refetchParticipantes } = useQuery(OBTENER_PARTICIPANTES);
@@ -345,6 +402,16 @@ const PerfilesPage: React.FC = () => {
     setTabValue(newValue);
   };
 
+  const showErr = (
+    setMsg: (s: string) => void,
+    setField: (s: string) => void,
+    msg: string
+  ) => {
+    setMsg(msg);
+    setField(detectField(msg));
+    setSnackErr({ open: true, msg });
+  };
+
   // --- HANDLERS PARTICIPANTE ---
   const handleOpenParticipante = (row: any = null) => {
     if (row) {
@@ -354,6 +421,8 @@ const PerfilesPage: React.FC = () => {
       setActiveParticipante(null);
       setIsExterno(false);
     }
+    setErrorParticipante(''); setErrorFieldParticipante('');
+    setPendingUserParticipante(null);
     setOpenParticipante(true);
   };
 
@@ -386,11 +455,11 @@ const PerfilesPage: React.FC = () => {
 
   const handleSubmitParticipante = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setErrorParticipante(''); setErrorFieldParticipante('');
     const formData = new FormData(e.currentTarget);
-    
+
     try {
       if (activeParticipante) {
-        // Edit mode
         const resPart = await editarParticipante({
           variables: {
             idParticipante: activeParticipante.idParticipante,
@@ -407,25 +476,29 @@ const PerfilesPage: React.FC = () => {
           }
         });
         if (!resPart.data.editarParticipante.ok) {
-          MySwal.fire('Error', resPart.data.editarParticipante.error, 'error');
+          showErr(setErrorParticipante, setErrorFieldParticipante, resPart.data.editarParticipante.error || 'Error al actualizar el participante.');
         } else {
           MySwal.fire('¡Éxito!', 'Participante actualizado exitosamente.', 'success');
           setOpenParticipante(false);
           refetchParticipantes();
         }
       } else {
-        // Create mode
-        const username = formData.get('username') as string;
-        const email = formData.get('email') as string;
-        const password = formData.get('password') as string;
-        
-        const resUsuario = await crearUsuario({ variables: { username, email, password } });
-        if (!resUsuario.data.crearUsuario.ok) {
-          MySwal.fire('Error', resUsuario.data.crearUsuario.error, 'error');
-          return;
+        let idUsuario = pendingUserParticipante;
+
+        if (!idUsuario) {
+          const username = formData.get('username') as string;
+          const email = formData.get('email') as string;
+          const password = formData.get('password') as string;
+
+          const resUsuario = await crearUsuario({ variables: { username, email, password } });
+          if (!resUsuario.data.crearUsuario.ok) {
+            showErr(setErrorParticipante, setErrorFieldParticipante, resUsuario.data.crearUsuario.error || 'Error al crear el usuario.');
+            return;
+          }
+          idUsuario = resUsuario.data.crearUsuario.usuario.idUsuario;
+          setPendingUserParticipante(idUsuario);
         }
-        const idUsuario = resUsuario.data.crearUsuario.usuario.idUsuario;
-        
+
         const resPart = await crearParticipante({
           variables: {
             idUsuario,
@@ -441,9 +514,9 @@ const PerfilesPage: React.FC = () => {
             idTutor: formData.get('id_tutor') || null,
           }
         });
-        
+
         if (!resPart.data.crearParticipante.ok) {
-          MySwal.fire('Error', resPart.data.crearParticipante.error, 'error');
+          showErr(setErrorParticipante, setErrorFieldParticipante, resPart.data.crearParticipante.error || 'Error al registrar el participante.');
         } else {
           MySwal.fire('¡Éxito!', 'Participante registrado exitosamente.', 'success');
           setOpenParticipante(false);
@@ -452,13 +525,15 @@ const PerfilesPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      MySwal.fire('Error', err.message || 'Error de red o servidor', 'error');
+      showErr(setErrorParticipante, setErrorFieldParticipante, err.message || 'Error de red o servidor.');
     }
   };
 
   // --- HANDLERS TUTOR ---
   const handleOpenTutor = (row: any = null) => {
     setActiveTutor(row);
+    setErrorTutor(''); setErrorFieldTutor('');
+    setPendingUserTutor(null);
     setOpenTutor(true);
   };
 
@@ -491,8 +566,9 @@ const PerfilesPage: React.FC = () => {
 
   const handleSubmitTutor = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setErrorTutor(''); setErrorFieldTutor('');
     const formData = new FormData(e.currentTarget);
-    
+
     try {
       if (activeTutor) {
         const resTutor = await editarTutor({
@@ -509,24 +585,29 @@ const PerfilesPage: React.FC = () => {
           }
         });
         if (!resTutor.data.editarTutor.ok) {
-          MySwal.fire('Error', resTutor.data.editarTutor.error, 'error');
+          showErr(setErrorTutor, setErrorFieldTutor, resTutor.data.editarTutor.error || 'Error al actualizar el tutor.');
         } else {
           MySwal.fire('¡Éxito!', 'Tutor actualizado exitosamente.', 'success');
           setOpenTutor(false);
           refetchTutores();
         }
       } else {
-        const username = formData.get('username') as string;
-        const email = formData.get('email') as string;
-        const password = formData.get('password') as string;
-        
-        const resUsuario = await crearUsuario({ variables: { username, email, password } });
-        if (!resUsuario.data.crearUsuario.ok) {
-          MySwal.fire('Error', resUsuario.data.crearUsuario.error, 'error');
-          return;
+        let idUsuario = pendingUserTutor;
+
+        if (!idUsuario) {
+          const username = formData.get('username') as string;
+          const email = formData.get('email') as string;
+          const password = formData.get('password') as string;
+
+          const resUsuario = await crearUsuario({ variables: { username, email, password } });
+          if (!resUsuario.data.crearUsuario.ok) {
+            showErr(setErrorTutor, setErrorFieldTutor, resUsuario.data.crearUsuario.error || 'Error al crear el usuario.');
+            return;
+          }
+          idUsuario = resUsuario.data.crearUsuario.usuario.idUsuario;
+          setPendingUserTutor(idUsuario);
         }
-        const idUsuario = resUsuario.data.crearUsuario.usuario.idUsuario;
-        
+
         const resTutor = await crearTutor({
           variables: {
             idUsuario,
@@ -540,9 +621,9 @@ const PerfilesPage: React.FC = () => {
             idProyecto: formData.get('id_proyecto') || null,
           }
         });
-        
+
         if (!resTutor.data.crearTutor.ok) {
-          MySwal.fire('Error', resTutor.data.crearTutor.error, 'error');
+          showErr(setErrorTutor, setErrorFieldTutor, resTutor.data.crearTutor.error || 'Error al registrar el tutor.');
         } else {
           MySwal.fire('¡Éxito!', 'Tutor registrado exitosamente.', 'success');
           setOpenTutor(false);
@@ -551,13 +632,15 @@ const PerfilesPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      MySwal.fire('Error', err.message || 'Error de red o servidor', 'error');
+      showErr(setErrorTutor, setErrorFieldTutor, err.message || 'Error de red o servidor.');
     }
   };
 
   // --- HANDLERS TRIBUNAL ---
   const handleOpenTribunal = (row: any = null) => {
     setActiveTribunal(row);
+    setErrorTribunal(''); setErrorFieldTribunal('');
+    setPendingUserTribunal(null);
     setOpenTribunal(true);
   };
 
@@ -590,8 +673,9 @@ const PerfilesPage: React.FC = () => {
 
   const handleSubmitTribunal = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setErrorTribunal('');
     const formData = new FormData(e.currentTarget);
-    
+
     try {
       if (activeTribunal) {
         const resTribunal = await editarTribunal({
@@ -607,24 +691,29 @@ const PerfilesPage: React.FC = () => {
           }
         });
         if (!resTribunal.data.editarTribunal.ok) {
-          MySwal.fire('Error', resTribunal.data.editarTribunal.error, 'error');
+          showErr(setErrorTribunal, setErrorFieldTribunal, resTribunal.data.editarTribunal.error || 'Error al actualizar el tribunal.');
         } else {
           MySwal.fire('¡Éxito!', 'Tribunal actualizado exitosamente.', 'success');
           setOpenTribunal(false);
           refetchTribunales();
         }
       } else {
-        const username = formData.get('username') as string;
-        const email = formData.get('email') as string;
-        const password = formData.get('password') as string;
-        
-        const resUsuario = await crearUsuario({ variables: { username, email, password } });
-        if (!resUsuario.data.crearUsuario.ok) {
-          MySwal.fire('Error', resUsuario.data.crearUsuario.error, 'error');
-          return;
+        let idUsuario = pendingUserTribunal;
+
+        if (!idUsuario) {
+          const username = formData.get('username') as string;
+          const email = formData.get('email') as string;
+          const password = formData.get('password') as string;
+
+          const resUsuario = await crearUsuario({ variables: { username, email, password } });
+          if (!resUsuario.data.crearUsuario.ok) {
+            showErr(setErrorTribunal, setErrorFieldTribunal, resUsuario.data.crearUsuario.error || 'Error al crear el usuario.');
+            return;
+          }
+          idUsuario = resUsuario.data.crearUsuario.usuario.idUsuario;
+          setPendingUserTribunal(idUsuario);
         }
-        const idUsuario = resUsuario.data.crearUsuario.usuario.idUsuario;
-        
+
         const resTribunal = await crearTribunal({
           variables: {
             idUsuario,
@@ -637,9 +726,9 @@ const PerfilesPage: React.FC = () => {
             direccion: (formData.get('direccion') as string) || '',
           }
         });
-        
+
         if (!resTribunal.data.crearTribunal.ok) {
-          MySwal.fire('Error', resTribunal.data.crearTribunal.error, 'error');
+          showErr(setErrorTribunal, setErrorFieldTribunal, resTribunal.data.crearTribunal.error || 'Error al registrar el tribunal.');
         } else {
           MySwal.fire('¡Éxito!', 'Tribunal registrado exitosamente.', 'success');
           setOpenTribunal(false);
@@ -648,13 +737,15 @@ const PerfilesPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      MySwal.fire('Error', err.message || 'Error de red o servidor', 'error');
+      showErr(setErrorTribunal, setErrorFieldTribunal, err.message || 'Error de red o servidor.');
     }
   };
 
   // --- HANDLERS PERSONAL ---
   const handleOpenPersonal = (row: any = null) => {
     setActivePersonal(row);
+    setErrorPersonal(''); setErrorFieldPersonal('');
+    setPendingUserPersonal(null);
     setOpenPersonal(true);
   };
 
@@ -687,6 +778,7 @@ const PerfilesPage: React.FC = () => {
 
   const handleSubmitPersonal = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setErrorPersonal('');
     const formData = new FormData(e.currentTarget);
 
     try {
@@ -704,23 +796,28 @@ const PerfilesPage: React.FC = () => {
           }
         });
         if (!res.data.editarPersonal.ok) {
-          MySwal.fire('Error', res.data.editarPersonal.error, 'error');
+          showErr(setErrorPersonal, setErrorFieldPersonal, res.data.editarPersonal.error || 'Error al actualizar el personal.');
         } else {
           MySwal.fire('¡Éxito!', 'Personal actualizado exitosamente.', 'success');
           setOpenPersonal(false);
           refetchPersonal();
         }
       } else {
-        const username = formData.get('username') as string;
-        const email = formData.get('email') as string;
-        const password = formData.get('password') as string;
+        let idUsuario = pendingUserPersonal;
 
-        const resUsuario = await crearUsuario({ variables: { username, email, password } });
-        if (!resUsuario.data.crearUsuario.ok) {
-          MySwal.fire('Error', resUsuario.data.crearUsuario.error, 'error');
-          return;
+        if (!idUsuario) {
+          const username = formData.get('username') as string;
+          const email = formData.get('email') as string;
+          const password = formData.get('password') as string;
+
+          const resUsuario = await crearUsuario({ variables: { username, email, password } });
+          if (!resUsuario.data.crearUsuario.ok) {
+            showErr(setErrorPersonal, setErrorFieldPersonal, resUsuario.data.crearUsuario.error || 'Error al crear el usuario.');
+            return;
+          }
+          idUsuario = resUsuario.data.crearUsuario.usuario.idUsuario;
+          setPendingUserPersonal(idUsuario);
         }
-        const idUsuario = resUsuario.data.crearUsuario.usuario.idUsuario;
 
         const res = await crearPersonal({
           variables: {
@@ -736,7 +833,7 @@ const PerfilesPage: React.FC = () => {
         });
 
         if (!res.data.crearPersonal.ok) {
-          MySwal.fire('Error', res.data.crearPersonal.error, 'error');
+          showErr(setErrorPersonal, setErrorFieldPersonal, res.data.crearPersonal.error || 'Error al registrar el personal.');
         } else {
           MySwal.fire('¡Éxito!', 'Personal registrado exitosamente.', 'success');
           setOpenPersonal(false);
@@ -745,7 +842,7 @@ const PerfilesPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      MySwal.fire('Error', err.message || 'Error de red o servidor', 'error');
+      showErr(setErrorPersonal, setErrorFieldPersonal, err.message || 'Error de red o servidor.');
     }
   };
 
@@ -985,7 +1082,7 @@ const PerfilesPage: React.FC = () => {
             {activeParticipante ? 'Editar Participante' : 'Registrar Participante'}
           </DialogTitle>
           <DialogContent dividers sx={{ bgcolor: 'background.default', p: { xs: 2, md: 3 } }}>
-            
+
             {!activeParticipante && (
               <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', borderRadius: 2, p: 3, mb: 3 }}>
                 <Box sx={{ mb: 3 }}>
@@ -993,9 +1090,9 @@ const PerfilesPage: React.FC = () => {
                   <Typography variant="body2" color="text.secondary">Credenciales de acceso al sistema</Typography>
                 </Box>
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={4}><TextField name="username" fullWidth label="Username" required size="small" /></Grid>
-                  <Grid item xs={12} sm={4}><TextField name="email" fullWidth label="Email" type="email" required size="small" /></Grid>
-                  <Grid item xs={12} sm={4}><TextField name="password" fullWidth label="Password" type="password" required size="small" /></Grid>
+                  <Grid item xs={12} sm={4}><TextField name="username" fullWidth label="Username" required size="small" error={errorFieldParticipante === 'username'} helperText={errorFieldParticipante === 'username' ? errorParticipante : undefined} /></Grid>
+                  <Grid item xs={12} sm={4}><TextField name="email" fullWidth label="Email" type="email" required size="small" error={errorFieldParticipante === 'email'} helperText={errorFieldParticipante === 'email' ? errorParticipante : undefined} /></Grid>
+                  <Grid item xs={12} sm={4}><TextField name="password" fullWidth label="Password" type="password" required size="small" error={errorFieldParticipante === 'password'} helperText={errorFieldParticipante === 'password' ? errorParticipante : undefined} /></Grid>
                 </Grid>
               </Paper>
             )}
@@ -1008,7 +1105,7 @@ const PerfilesPage: React.FC = () => {
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}><TextField name="nombre" defaultValue={activeParticipante?.nombre} fullWidth label="Nombres" required size="small" /></Grid>
                 <Grid item xs={12} sm={6}><TextField name="apellido" defaultValue={activeParticipante?.apellido} fullWidth label="Apellidos" required size="small" /></Grid>
-                <Grid item xs={12} sm={4}><TextField name="ci" defaultValue={activeParticipante?.ci} fullWidth label="C.I." required size="small" /></Grid>
+                <Grid item xs={12} sm={4}><TextField name="ci" defaultValue={activeParticipante?.ci} fullWidth label="C.I." required size="small" error={errorFieldParticipante === 'ci'} helperText={errorFieldParticipante === 'ci' ? errorParticipante : undefined} /></Grid>
                 <Grid item xs={12} sm={4}>
                   <TextField name="expedicion" defaultValue={activeParticipante?.expedicion || 'LP'} fullWidth select label="Expedición" size="small">
                     {EXPEDICION_CHOICES.map((option) => (
@@ -1075,7 +1172,7 @@ const PerfilesPage: React.FC = () => {
             {activeTutor ? 'Editar Tutor' : 'Registrar Tutor'}
           </DialogTitle>
           <DialogContent dividers sx={{ bgcolor: 'background.default', p: { xs: 2, md: 3 } }}>
-            
+
             {!activeTutor && (
               <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', borderRadius: 2, p: 3, mb: 3 }}>
                 <Box sx={{ mb: 3 }}>
@@ -1083,13 +1180,13 @@ const PerfilesPage: React.FC = () => {
                   <Typography variant="body2" color="text.secondary">Credenciales de acceso al sistema</Typography>
                 </Box>
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={4}><TextField name="username" fullWidth label="Username" required size="small" /></Grid>
-                  <Grid item xs={12} sm={4}><TextField name="email" fullWidth label="Email" type="email" required size="small" /></Grid>
-                  <Grid item xs={12} sm={4}><TextField name="password" fullWidth label="Password" type="password" required size="small" /></Grid>
+                  <Grid item xs={12} sm={4}><TextField name="username" fullWidth label="Username" required size="small" error={errorFieldTutor === 'username'} helperText={errorFieldTutor === 'username' ? errorTutor : undefined} /></Grid>
+                  <Grid item xs={12} sm={4}><TextField name="email" fullWidth label="Email" type="email" required size="small" error={errorFieldTutor === 'email'} helperText={errorFieldTutor === 'email' ? errorTutor : undefined} /></Grid>
+                  <Grid item xs={12} sm={4}><TextField name="password" fullWidth label="Password" type="password" required size="small" error={errorFieldTutor === 'password'} helperText={errorFieldTutor === 'password' ? errorTutor : undefined} /></Grid>
                 </Grid>
               </Paper>
             )}
-            
+
             <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', borderRadius: 2, p: 3, mb: 3 }}>
               <Box sx={{ mb: 3 }}>
                 <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem', mb: 0.5 }}>Datos Personales</Typography>
@@ -1098,7 +1195,7 @@ const PerfilesPage: React.FC = () => {
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}><TextField name="nombre" defaultValue={activeTutor?.nombre} fullWidth label="Nombres" required size="small" /></Grid>
                 <Grid item xs={12} sm={6}><TextField name="apellido" defaultValue={activeTutor?.apellido} fullWidth label="Apellidos" required size="small" /></Grid>
-                <Grid item xs={12} sm={4}><TextField name="ci" defaultValue={activeTutor?.ci} fullWidth label="C.I." required size="small" /></Grid>
+                <Grid item xs={12} sm={4}><TextField name="ci" defaultValue={activeTutor?.ci} fullWidth label="C.I." required size="small" error={errorFieldTutor === 'ci'} helperText={errorFieldTutor === 'ci' ? errorTutor : undefined} /></Grid>
                 <Grid item xs={12} sm={4}>
                   <TextField name="expedicion" defaultValue={activeTutor?.expedicion || 'LP'} fullWidth select label="Expedición" size="small">
                     {EXPEDICION_CHOICES.map((option) => (
@@ -1116,7 +1213,7 @@ const PerfilesPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary">Información laboral del tutor</Typography>
               </Box>
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}><TextField name="cod_empleado" defaultValue={activeTutor?.codEmpleado} fullWidth label="Código de Empleado" required size="small" /></Grid>
+                <Grid item xs={12} sm={6}><TextField name="cod_empleado" defaultValue={activeTutor?.codEmpleado} fullWidth label="Código de Empleado" required size="small" error={errorFieldTutor === 'cod_empleado'} helperText={errorFieldTutor === 'cod_empleado' ? errorTutor : undefined} /></Grid>
                 <Grid item xs={12} sm={6}><TextField name="direccion" defaultValue={activeTutor?.direccion} fullWidth label="Dirección Particular" size="small" /></Grid>
                 <Grid item xs={12}>
                   <TextField name="id_proyecto" defaultValue={activeTutor?.proyecto?.idProyecto || ''} fullWidth select label="Proyecto" size="small">
@@ -1139,62 +1236,254 @@ const PerfilesPage: React.FC = () => {
       </Dialog>
 
       {/* ======================= MODAL TRIBUNAL ======================= */}
-      <Dialog open={openTribunal} onClose={() => setOpenTribunal(false)} maxWidth="md" fullWidth>
+      <Dialog
+        open={openTribunal}
+        onClose={() => setOpenTribunal(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ 
+          sx: { 
+            borderRadius: '12px', 
+            border: '1px solid',
+            borderColor: 'divider',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.05), 0 10px 10px -5px rgba(0,0,0,0.02)',
+            overflow: 'hidden' 
+          } 
+        }}
+      >
         <form onSubmit={handleSubmitTribunal}>
-          <DialogTitle sx={{ pb: 2, fontSize: '1.25rem', fontWeight: 600 }}>
-            {activeTribunal ? 'Editar Tribunal' : 'Registrar Tribunal'}
-          </DialogTitle>
-          <DialogContent dividers sx={{ bgcolor: 'background.default', p: { xs: 2, md: 3 } }}>
-            
+          {/* Header minimalista y formal */}
+          <Box sx={{ bgcolor: '#ffffff', px: 3, py: 2.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid', borderColor: '#F1F5F9' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{
+                width: 32, height: 32, borderRadius: '6px',
+                bgcolor: '#F1F5F9',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                <UserOutlined style={{ color: '#475569', fontSize: 15 }} />
+              </Box>
+              <Box>
+                <Typography sx={{ color: '#0F172A', fontWeight: 600, fontSize: '1.05rem', lineHeight: 1.2 }}>
+                  {activeTribunal ? 'Editar Miembro del Tribunal' : 'Registrar Miembro del Tribunal'}
+                </Typography>
+                <Typography sx={{ color: '#64748B', fontSize: '0.72rem', mt: 0.2 }}>
+                  Directorio Académico
+                </Typography>
+              </Box>
+            </Box>
+            <Chip 
+              label="Tribunal" 
+              size="small" 
+              variant="outlined" 
+              sx={{ 
+                borderRadius: '6px', 
+                fontWeight: 500, 
+                fontSize: '0.72rem', 
+                color: '#475569', 
+                borderColor: '#E2E8F0',
+                bgcolor: '#F8FAFC'
+              }} 
+            />
+          </Box>
+
+          <DialogContent sx={{ bgcolor: '#fff', px: 3, pt: 2, pb: 2 }}>
+
             {!activeTribunal && (
-              <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', borderRadius: 2, p: 3, mb: 3 }}>
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem', mb: 0.5 }}>Datos de Usuario</Typography>
-                  <Typography variant="body2" color="text.secondary">Credenciales de acceso al sistema</Typography>
-                </Box>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={4}><TextField name="username" fullWidth label="Username" required size="small" /></Grid>
-                  <Grid item xs={12} sm={4}><TextField name="email" fullWidth label="Email" type="email" required size="small" /></Grid>
-                  <Grid item xs={12} sm={4}><TextField name="password" fullWidth label="Password" type="password" required size="small" /></Grid>
+              <>
+                <SectionLabel>Credenciales de acceso</SectionLabel>
+                <Grid container spacing={2} sx={{ mb: 2 }}>
+                  <Grid item xs={12} sm={4}>
+                    <TextField name="username" fullWidth label="Usuario" required size="small"
+                      error={errorFieldTribunal === 'username'}
+                      helperText={errorFieldTribunal === 'username' ? errorTribunal : undefined}
+                      InputProps={{ 
+                        sx: { 
+                          borderRadius: '6px', 
+                          bgcolor: '#F8FAFC', 
+                          transition: 'all 0.15s ease',
+                          '&:hover': { bgcolor: '#F1F5F9' },
+                          '&.Mui-focused': { bgcolor: '#FFF' }
+                        } 
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField name="email" fullWidth label="Correo electrónico" type="email" required size="small"
+                      error={errorFieldTribunal === 'email'}
+                      helperText={errorFieldTribunal === 'email' ? errorTribunal : undefined}
+                      InputProps={{ 
+                        sx: { 
+                          borderRadius: '6px', 
+                          bgcolor: '#F8FAFC', 
+                          transition: 'all 0.15s ease',
+                          '&:hover': { bgcolor: '#F1F5F9' },
+                          '&.Mui-focused': { bgcolor: '#FFF' }
+                        } 
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField name="password" fullWidth label="Contraseña" type="password" required size="small"
+                      error={errorFieldTribunal === 'password'}
+                      helperText={errorFieldTribunal === 'password' ? errorTribunal : undefined}
+                      InputProps={{ 
+                        sx: { 
+                          borderRadius: '6px', 
+                          bgcolor: '#F8FAFC', 
+                          transition: 'all 0.15s ease',
+                          '&:hover': { bgcolor: '#F1F5F9' },
+                          '&.Mui-focused': { bgcolor: '#FFF' }
+                        } 
+                      }}
+                    />
+                  </Grid>
                 </Grid>
-              </Paper>
+              </>
             )}
-            
-            <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', borderRadius: 2, p: 3, mb: 3 }}>
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem', mb: 0.5 }}>Datos Personales</Typography>
-                <Typography variant="body2" color="text.secondary">Información básica del tribunal</Typography>
-              </Box>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}><TextField name="nombre" defaultValue={activeTribunal?.nombre} fullWidth label="Nombres" required size="small" /></Grid>
-                <Grid item xs={12} sm={6}><TextField name="apellido" defaultValue={activeTribunal?.apellido} fullWidth label="Apellidos" required size="small" /></Grid>
-                <Grid item xs={12} sm={4}><TextField name="ci" defaultValue={activeTribunal?.ci} fullWidth label="C.I." required size="small" /></Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField name="expedicion" defaultValue={activeTribunal?.expedicion || 'LP'} fullWidth select label="Expedición" size="small">
-                    {EXPEDICION_CHOICES.map((option) => (
-                      <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-                <Grid item xs={12} sm={4}><TextField name="celular" defaultValue={activeTribunal?.celular} fullWidth label="Celular" required size="small" /></Grid>
+
+            <SectionLabel>Datos personales</SectionLabel>
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={12} sm={6}>
+                <TextField name="nombre" defaultValue={activeTribunal?.nombre} fullWidth label="Nombres" required size="small"
+                  InputProps={{ 
+                    sx: { 
+                      borderRadius: '6px', 
+                      bgcolor: '#F8FAFC', 
+                      transition: 'all 0.15s ease',
+                      '&:hover': { bgcolor: '#F1F5F9' },
+                      '&.Mui-focused': { bgcolor: '#FFF' }
+                    } 
+                  }}
+                />
               </Grid>
-            </Paper>
-            
-            <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', borderRadius: 2, p: 3 }}>
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem', mb: 0.5 }}>Datos Profesionales</Typography>
-                <Typography variant="body2" color="text.secondary">Especialidad y formación</Typography>
-              </Box>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}><TextField name="especialidad" defaultValue={activeTribunal?.especialidad} fullWidth label="Especialidad (ej. Ing. Sistemas)" required size="small" /></Grid>
-                <Grid item xs={12} sm={6}><TextField name="direccion" defaultValue={activeTribunal?.direccion} fullWidth label="Dirección Particular" size="small" /></Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField name="apellido" defaultValue={activeTribunal?.apellido} fullWidth label="Apellidos" required size="small"
+                  InputProps={{ 
+                    sx: { 
+                      borderRadius: '6px', 
+                      bgcolor: '#F8FAFC', 
+                      transition: 'all 0.15s ease',
+                      '&:hover': { bgcolor: '#F1F5F9' },
+                      '&.Mui-focused': { bgcolor: '#FFF' }
+                    } 
+                  }}
+                />
               </Grid>
-            </Paper>
+              <Grid item xs={12} sm={4}>
+                <TextField name="ci" defaultValue={activeTribunal?.ci} fullWidth label="Cédula de Identidad" required size="small"
+                  error={errorFieldTribunal === 'ci'}
+                  helperText={errorFieldTribunal === 'ci' ? errorTribunal : undefined}
+                  InputProps={{ 
+                    sx: { 
+                      borderRadius: '6px', 
+                      bgcolor: '#F8FAFC', 
+                      transition: 'all 0.15s ease',
+                      '&:hover': { bgcolor: '#F1F5F9' },
+                      '&.Mui-focused': { bgcolor: '#FFF' }
+                    } 
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField name="expedicion" defaultValue={activeTribunal?.expedicion || 'LP'} fullWidth select label="Expedición" size="small"
+                  InputProps={{ 
+                    sx: { 
+                      borderRadius: '6px', 
+                      bgcolor: '#F8FAFC', 
+                      transition: 'all 0.15s ease',
+                      '&:hover': { bgcolor: '#F1F5F9' },
+                      '&.Mui-focused': { bgcolor: '#FFF' }
+                    } 
+                  }}
+                >
+                  {EXPEDICION_CHOICES.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField name="celular" defaultValue={activeTribunal?.celular} fullWidth label="Teléfono / Celular" required size="small"
+                  error={errorFieldTribunal === 'celular'}
+                  helperText={errorFieldTribunal === 'celular' ? errorTribunal : undefined}
+                  InputProps={{ 
+                    sx: { 
+                      borderRadius: '6px', 
+                      bgcolor: '#F8FAFC', 
+                      transition: 'all 0.15s ease',
+                      '&:hover': { bgcolor: '#F1F5F9' },
+                      '&.Mui-focused': { bgcolor: '#FFF' }
+                    } 
+                  }}
+                />
+              </Grid>
+            </Grid>
+
+            <SectionLabel>Perfil académico</SectionLabel>
+            <Grid container spacing={2} sx={{ mb: 1 }}>
+              <Grid item xs={12} sm={6}>
+                <TextField name="especialidad" defaultValue={activeTribunal?.especialidad} fullWidth label="Área de especialidad" required size="small"
+                  error={errorFieldTribunal === 'especialidad'}
+                  helperText={errorFieldTribunal === 'especialidad' ? errorTribunal : undefined}
+                  InputProps={{ 
+                    sx: { 
+                      borderRadius: '6px', 
+                      bgcolor: '#F8FAFC', 
+                      transition: 'all 0.15s ease',
+                      '&:hover': { bgcolor: '#F1F5F9' },
+                      '&.Mui-focused': { bgcolor: '#FFF' }
+                    } 
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField name="direccion" defaultValue={activeTribunal?.direccion} fullWidth label="Dirección particular" size="small"
+                  InputProps={{ 
+                    sx: { 
+                      borderRadius: '6px', 
+                      bgcolor: '#F8FAFC', 
+                      transition: 'all 0.15s ease',
+                      '&:hover': { bgcolor: '#F1F5F9' },
+                      '&.Mui-focused': { bgcolor: '#FFF' }
+                    } 
+                  }}
+                />
+              </Grid>
+            </Grid>
+
           </DialogContent>
-          <DialogActions sx={{ p: 2, px: 3, bgcolor: 'background.paper' }}>
-            <Button onClick={() => setOpenTribunal(false)} color="secondary" variant="outlined">Cancelar</Button>
-            <Button type="submit" variant="contained" sx={{ px: 4 }}>
-              {activeTribunal ? 'Actualizar Tribunal' : 'Guardar Tribunal'}
+
+          <DialogActions sx={{ px: 3, py: 2.5, bgcolor: '#FCFCFD', borderTop: '1px solid', borderColor: '#F1F5F9' }}>
+            <Button 
+              onClick={() => setOpenTribunal(false)} 
+              variant="text" 
+              sx={{ 
+                color: '#475569', 
+                textTransform: 'none', 
+                fontWeight: 500,
+                fontSize: '0.85rem',
+                mr: 1,
+                '&:hover': { bgcolor: '#F1F5F9' }
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              type="submit" 
+              variant="contained"
+              sx={{ 
+                px: 3.5, 
+                py: 0.8,
+                bgcolor: '#0F172A', 
+                color: '#FFF',
+                textTransform: 'none',
+                fontWeight: 500,
+                fontSize: '0.85rem',
+                borderRadius: '6px',
+                boxShadow: 'none',
+                '&:hover': { bgcolor: '#1E293B', boxShadow: 'none' } 
+              }}
+            >
+              {activeTribunal ? 'Guardar Cambios' : 'Registrar Miembro'}
             </Button>
           </DialogActions>
         </form>
@@ -1214,9 +1503,9 @@ const PerfilesPage: React.FC = () => {
                   <Typography variant="body2" color="text.secondary">Credenciales de acceso al sistema</Typography>
                 </Box>
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={4}><TextField name="username" fullWidth label="Username" required size="small" /></Grid>
-                  <Grid item xs={12} sm={4}><TextField name="email" fullWidth label="Email" type="email" required size="small" /></Grid>
-                  <Grid item xs={12} sm={4}><TextField name="password" fullWidth label="Password" type="password" required size="small" /></Grid>
+                  <Grid item xs={12} sm={4}><TextField name="username" fullWidth label="Username" required size="small" error={errorFieldPersonal === 'username'} helperText={errorFieldPersonal === 'username' ? errorPersonal : undefined} /></Grid>
+                  <Grid item xs={12} sm={4}><TextField name="email" fullWidth label="Email" type="email" required size="small" error={errorFieldPersonal === 'email'} helperText={errorFieldPersonal === 'email' ? errorPersonal : undefined} /></Grid>
+                  <Grid item xs={12} sm={4}><TextField name="password" fullWidth label="Password" type="password" required size="small" error={errorFieldPersonal === 'password'} helperText={errorFieldPersonal === 'password' ? errorPersonal : undefined} /></Grid>
                 </Grid>
               </Paper>
             )}
@@ -1229,7 +1518,7 @@ const PerfilesPage: React.FC = () => {
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}><TextField name="nombre" defaultValue={activePersonal?.nombre} fullWidth label="Nombres" required size="small" /></Grid>
                 <Grid item xs={12} sm={6}><TextField name="apellido" defaultValue={activePersonal?.apellido} fullWidth label="Apellidos" required size="small" /></Grid>
-                <Grid item xs={12} sm={4}><TextField name="ci" defaultValue={activePersonal?.ci} fullWidth label="C.I." required size="small" /></Grid>
+                <Grid item xs={12} sm={4}><TextField name="ci" defaultValue={activePersonal?.ci} fullWidth label="C.I." required size="small" error={errorFieldPersonal === 'ci'} helperText={errorFieldPersonal === 'ci' ? errorPersonal : undefined} /></Grid>
                 <Grid item xs={12} sm={4}>
                   <TextField name="expedicion" defaultValue={activePersonal?.expedicion || 'LP'} fullWidth select label="Expedición" size="small">
                     {EXPEDICION_CHOICES.map((option) => (
@@ -1267,6 +1556,24 @@ const PerfilesPage: React.FC = () => {
           </DialogActions>
         </form>
       </Dialog>
+
+      {/* ── Snackbar flotante de errores ── */}
+      <Snackbar
+        open={snackErr.open}
+        autoHideDuration={5000}
+        onClose={() => setSnackErr(p => ({ ...p, open: false }))}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        sx={{ mt: 7 }}
+      >
+        <Alert
+          severity="error"
+          variant="filled"
+          onClose={() => setSnackErr(p => ({ ...p, open: false }))}
+          sx={{ minWidth: 320, fontWeight: 500, boxShadow: 6 }}
+        >
+          {snackErr.msg}
+        </Alert>
+      </Snackbar>
 
     </MainCard>
   );

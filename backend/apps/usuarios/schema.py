@@ -1269,6 +1269,25 @@ class LoginTribunalMovil(graphene.Mutation):
         return LoginTribunalMovil(token=token, tribunal=tribunal_obj, ok=True, error=None)  # type: ignore
 
 
+class GuardarFcmToken(graphene.Mutation):
+    """Guarda el token FCM del dispositivo móvil del tribunal para notificaciones push."""
+    class Arguments:
+        id_tribunal = graphene.ID(required=True)
+        token = graphene.String(required=True)
+
+    ok = graphene.Boolean()
+
+    @staticmethod
+    def mutate(root, info, id_tribunal, token):
+        try:
+            tribunal = Tribunal.objects.get(pk=id_tribunal)
+            tribunal.fcm_token = token
+            tribunal.save(update_fields=['fcm_token'])
+            return GuardarFcmToken(ok=True)  # type: ignore
+        except Tribunal.DoesNotExist:
+            return GuardarFcmToken(ok=False)  # type: ignore
+
+
 class CambiarPasswordPropio(graphene.Mutation):
     class Arguments:
         password_actual = graphene.String(required=True)
@@ -1324,6 +1343,7 @@ class Mutation(graphene.ObjectType):
 
     cambiar_password_propio = CambiarPasswordPropio.Field()
     login_tribunal_movil = LoginTribunalMovil.Field()
+    guardar_fcm_token = GuardarFcmToken.Field()
 
     # 2FA
     login_con_totp = LoginConTotp.Field()

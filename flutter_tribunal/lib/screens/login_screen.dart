@@ -1,19 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../config/graphql_config.dart';
 
 const String _loginMutation = r'''
   mutation LoginTribunalMovil($username: String!, $password: String!) {
     loginTribunalMovil(username: $username, password: $password) {
       token
-      tribunal {
-        idTribunal
-        nombre
-        apellido
-      }
+      tribunal { idTribunal nombre apellido }
       ok
       error
+    }
+  }
+''';
+
+const String _fcmMutation = r'''
+  mutation GuardarFcmToken($idTribunal: ID!, $token: String!) {
+    guardarFcmToken(idTribunal: $idTribunal, token: $token) {
+      ok
     }
   }
 ''';
@@ -71,18 +76,42 @@ class _LoginScreenState extends State<LoginScreen>
       );
 
       if (result.hasException) {
-        setState(() => _errorMsg = 'Error de conexión. Verifica que el servidor esté activo.');
+        final ex = result.exception!;
+        String msg;
+        if (ex.linkException != null) {
+          msg = 'Sin conexión al servidor (${ex.linkException.runtimeType}): ${ex.linkException.toString()}';
+        } else if (ex.graphqlErrors.isNotEmpty) {
+          msg = 'Error del servidor: ${ex.graphqlErrors.map((e) => e.message).join(', ')}';
+        } else {
+          msg = 'Error desconocido: $ex';
+        }
+        setState(() => _errorMsg = msg);
         return;
       }
 
       final data = result.data?['loginTribunalMovil'];
       if (data?['ok'] == true) {
         final tribunal = data['tribunal'];
+        final tribunalId = tribunal['idTribunal'].toString();
         await AuthService.saveSession(
           token: data['token'],
-          tribunalId: tribunal['idTribunal'].toString(),
+          tribunalId: tribunalId,
           tribunalNombre: '${tribunal['nombre']} ${tribunal['apellido']}',
         );
+        // Registrar token FCM en el backend para notificaciones push
+        try {
+          final fcmToken = await NotificationService.getToken()
+              .timeout(const Duration(seconds: 4));
+          if (fcmToken != null) {
+            final fcmClient = await GraphQLConfig.buildClient();
+            await fcmClient.mutate(MutationOptions(
+              document: gql(_fcmMutation),
+              variables: {'idTribunal': tribunalId, 'token': fcmToken},
+            ));
+          }
+        } catch (_) {
+          // No bloquear el login si falla el registro FCM
+        }
         if (mounted) {
           Navigator.of(context).pushReplacementNamed('/proyectos');
         }

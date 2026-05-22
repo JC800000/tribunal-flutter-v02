@@ -89,11 +89,11 @@ function ActaDialog({ open, onClose, onSave, saving, initial, proyectos, planill
           <FormControl fullWidth required>
             <InputLabel>Proyecto</InputLabel>
             <Select value={form.idProyecto} label="Proyecto" onChange={e => set('idProyecto', e.target.value)}>
+              {proyectos.length === 0 && (
+                <MenuItem disabled>No hay proyectos aprobados disponibles</MenuItem>
+              )}
               {proyectos.map(p => (
-                <MenuItem key={p.idProyecto} value={p.idProyecto}>
-                  {p.titulo} &nbsp;
-                  <Chip label={p.estado} size="small" color={estadoColor[p.estado] || 'default'} sx={{ ml: 1 }} />
-                </MenuItem>
+                <MenuItem key={p.idProyecto} value={p.idProyecto}>{p.titulo}</MenuItem>
               ))}
             </Select>
           </FormControl>
@@ -221,7 +221,7 @@ export default function ActasEvaluacionPage() {
   const [juradosDialog, setJuradosDialog] = useState({ open: false, acta: null });
 
   const actas      = data?.todasLasActas || [];
-  const proyectos  = data?.todosLosProyectos || [];
+  const proyectos  = (data?.todosLosProyectos || []).filter(p => p.estado?.toLowerCase() === 'aprobado');
   const planillas  = data?.todasLasPlanillas || [];
   const tribunales = data?.todosLosTribunales || [];
 
